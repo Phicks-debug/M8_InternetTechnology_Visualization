@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoRa Realtime 3D Map - University of Twente</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.34/esri/themes/light/main.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --app-blue: #0877b9;
+      --app-green: #2fbf69;
+      --app-amber: #e6a331;
+      --app-red: #e14b4b;
+      --panel: rgba(255, 255, 255, 0.84);
+      --line: rgba(34, 50, 45, 0.14);
+      --text: #172321;
+      --muted: #5d6f69;
+      --calcite-color-brand: var(--app-blue);
+      --calcite-ui-corner-radius: 8px;
+    }
+
+    html,
+    body,
+    #app,
+    #view {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      overflow: hidden;
+      background: #eef4ef;
+      font-family: "Aptos", "Segoe UI", sans-serif;
+    }
+
+    #view {
+      position: fixed;
+      inset: 0;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      padding: 16px;
+    }
+
+    .title,
+    .mini,
+    .legend {
+      position: absolute;
+      pointer-events: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 10px 30px rgba(39, 55, 49, 0.11);
+      backdrop-filter: blur(12px);
+    }
+
+    .title {
+      top: 16px;
+      left: 16px;
+      min-width: 260px;
+      padding: 14px 16px;
+    }
+
+    .eyebrow {
+      color: var(--app-blue);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 4px 0 0;
+      color: var(--text);
+      font-size: 30px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .mini {
+      top: 16px;
+      right: 16px;
+      width: 280px;
+      padding: 10px 12px;
+      color: var(--text);
+    }
+
+    .mini-head,
+    .mini-line,
+    .activity-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .mini-head {
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      font-weight: 800;
+    }
+
+    .mini-head calcite-chip {
+      margin-inline: 0;
+    }
+
+    .mini-line {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .mini-line strong {
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .activity {
+      padding-top: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .activity-row {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .activity-row strong {
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .meter {
+      width: 54px;
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(23, 35, 33, 0.12);
+    }
+
+    .meter span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--app-blue), var(--app-amber), var(--app-red));
+    }
+
+    .legend {
+      bottom: 16px;
+      left: 16px;
+      width: 250px;
+      padding: 10px 12px;
+    }
+
+    .legend-title {
+      margin-bottom: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 21px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .swatch {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      border: 1px solid white;
+      flex: 0 0 auto;
+    }
+
+    .swatch.gateway { background: var(--app-blue); }
+    .swatch.strong { background: var(--app-green); }
+    .swatch.medium { background: var(--app-amber); }
+    .swatch.weak { background: var(--app-red); }
+    .swatch.flow {
+      width: 22px;
+      height: 3px;
+      border-radius: 999px;
+      border: 0;
+      background: linear-gradient(90deg, var(--app-blue), var(--app-amber));
+    }
+    .swatch.activity {
+      width: 22px;
+      height: 8px;
+      border-radius: 999px;
+      border: 0;
+      background: linear-gradient(90deg, #2f7fd2, var(--app-amber), var(--app-red));
+    }
+
+    .esri-ui-top-left {
+      top: 126px;
+      left: 16px;
+    }
+
+    @media (max-width: 780px) {
+      .hud {
+        padding: 10px;
+      }
+
+      .title {
+        top: 10px;
+        left: 10px;
+        min-width: 230px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .mini {
+        top: auto;
+        right: 10px;
+        bottom: 10px;
+        left: 10px;
+        width: auto;
+      }
+
+      .legend {
+        display: none;
+      }
+
+      .esri-ui-top-left {
+        top: 118px;
+        left: 10px;
+      }
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-BOfm_sC1.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div id="view" aria-label="Interactive 3D LoRa telemetry map"></div>
+
+    <div class="hud">
+      <section class="title" aria-label="Map title">
+        <div class="eyebrow">University of Twente</div>
+        <h1>LoRa 3D Map</h1>
+      </section>
+
+      <section class="mini" aria-label="Live telemetry">
+        <div class="mini-head">
+          <span>Telemetry</span>
+          <calcite-chip appearance="solid" scale="s"><span id="ws-status">Connecting</span>&nbsp;<span id="source-mode">link</span></calcite-chip>
+        </div>
+        <div class="mini-line"><span>Packets</span><strong id="total-msgs">0</strong></div>
+        <div class="mini-line"><span>Devices</span><strong id="active-devices">0</strong></div>
+        <div class="mini-line"><span>Last</span><strong id="last-msg">-</strong></div>
+        <div class="activity" id="activity-list">
+          <div class="activity-row"><span>No recent building activity</span><strong>-</strong></div>
+        </div>
+      </section>
+
+      <section class="legend" aria-label="Legend">
+        <div class="legend-title">Signal key</div>
+        <div class="legend-row"><span class="swatch gateway"></span>Gateway</div>
+        <div class="legend-row"><span class="swatch strong"></span>Strong RSSI</div>
+        <div class="legend-row"><span class="swatch medium"></span>Medium RSSI</div>
+        <div class="legend-row"><span class="swatch weak"></span>Weak RSSI</div>
+        <div class="legend-row"><span class="swatch flow"></span>Packet curve</div>
+        <div class="legend-row"><span class="swatch activity"></span>Building activity</div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="https://js.arcgis.com/calcite-components/5.0"></script>
+  <script src="https://js.arcgis.com/4.34/"></script>
+</body>
+</html>
