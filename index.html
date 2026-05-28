@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LoRa Realtime 3D Map - University of Twente</title>
   <link rel="stylesheet" href="https://js.arcgis.com/4.34/esri/themes/light/main.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <style>
     :root {
       color-scheme: light;
@@ -174,10 +175,61 @@
       font-weight: 750;
     }
 
+    .mini-label-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+    .mini-label{
+      color: var(--muted);
+      white-space:nowrap;
+    }
+
     .mini-line strong {
       color: var(--text);
       font-size: 13px;
     }
+
+    .help-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: help;
+  line-height: 1;
+}
+
+.tooltip-box {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 220px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(39, 55, 49, 0.14);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 160ms ease, visibility 160ms ease, transform 160ms ease;
+}
+
+.help-tip:hover .tooltip-box,
+.help-tip:focus-within .tooltip-box {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(4px);
+}
 
     .legend {
       bottom: 16px;
@@ -285,13 +337,61 @@
           <span>Telemetry</span>
           <calcite-chip appearance="solid" scale="s"><span id="ws-status">Connecting</span>&nbsp;<span id="source-mode">link</span></calcite-chip>
         </div>
-        <div class="mini-line"><span>Scope</span><strong id="scope-name">Total</strong></div>
-        <div class="mini-line"><span>Packets</span><strong id="total-msgs">0</strong></div>
-        <div class="mini-line"><span>Devices</span><strong id="active-devices">0</strong></div>
-        <div class="mini-line"><span>Avg RSSI</span><strong id="avg-rssi">0</strong></div>
-        <div class="mini-line"><span>Avg SNR</span><strong id="avg-snr">0</strong></div>
-        <div class="mini-line"><span>Session Started</span><strong id="session-started"></strong></div>
-        <div class="mini-line"><span>Last</span><strong id="last-msg">-</strong></div>
+        <div class="mini-line">
+          <div class="mini-label-group">
+          <span class="help-tip" tabindex="0">
+            <i class="bi bi-question-circle"></i>
+            <span class="tooltip-box">Currently selected gateway scope: Total, a single gateway, or the combined Ravelijn-A and Ravelijn-B.</span>
+          </span>
+          <span class="mini-label">Scope</span></div><strong id="scope-name">Total</strong></div>
+
+        <div class="mini-line">
+          <div class="mini-label-group">
+          <span class="help-tip" tabindex="0">
+            <i class="bi bi-question-circle"></i>
+            <span class="tooltip-box">Number of LoRa packets received in this session for the currently selected scope.</span>
+          </span>
+          <span class="mini-label">Packets</span></div><strong id="total-msgs">0</strong></div>
+
+        <div class="mini-line">
+          <div class="mini-label-group">
+          <span class="help-tip" tabindex="0">
+            <i class="bi bi-question-circle"></i>
+            <span class="tooltip-box">Number of unique sensor seen in the current scope during this session.</span>
+          </span>
+          <span class="mini-label">Devices</span></div><strong id="active-devices">0</strong></div>
+
+        <div class="mini-line">
+          <div class="mini-label-group">
+          <span class="help-tip" tabindex="0">
+            <i class="bi bi-question-circle"></i>
+            <span class="tooltip-box">RSSI = received signal strength in dBm.<br/> More negative means weaker, less negative means stronger.</span>
+          </span>
+          <span class="mini-label">Avg RSSI</span></div><strong id="avg-rssi">0</strong></div>
+
+        <div class="mini-line">
+          <div class="mini-label-group">
+          <span class="help-tip" tabindex="0">
+            <i class="bi bi-question-circle"></i>
+            <span class="tooltip-box">SNR = signal to noise ratio in dB.<br /> Higher means the signal stood out better from noise.</span>
+          </span>
+          <span class="mini-label">Avg SNR</span></div><strong id="avg-snr">0</strong></div>
+
+        <div class="mini-line">
+          <div class="mini-label-group">
+          <span class="help-tip" tabindex="0">
+            <i class="bi bi-question-circle"></i>
+            <span class="tooltip-box">Time when this monitoring session started collecting packets.</span>
+          </span>
+          <span class="mini-label">Session Started</span></div><strong id="session-started"></strong></div>
+          
+        <div class="mini-line">
+          <div class="mini-label-group">
+          <span class="help-tip" tabindex="0">
+          <i class="bi bi-question-circle"></i>
+          <span class="tooltip-box">Time of the most recent packet received in the selected scope.</span>
+        </span>
+        <span class="mini-label">Last</span></div><strong id="last-msg">-</strong></div>
       </section>
 
       <section class="legend" aria-label="Legend">
