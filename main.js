@@ -178,12 +178,12 @@ window.require(
       view.goTo(
         {
           position: {
-            longitude: gateway.longitude,
-            latitude: gateway.latitude,
-            z: gateway.altitude + 120,
+            longitude: gateway.longitude - 0.001,
+            latitude: gateway.latitude - 0.001,
+            z: gateway.altitude + 80,
           },
           heading: 28,
-          tilt: 72,
+          tilt: 80,
         },
         {
           duration: 1600,
