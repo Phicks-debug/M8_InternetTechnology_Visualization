@@ -722,7 +722,7 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
   point.symbol = pointSymbol(
     rssiColor(sensor.rssi),
     sensor.multiGateway ? "#123040" : "#ffffff",
-    sensor.multiGateway ? 12 : 10,
+    sensor.multiGateway ? 20 : 10,
   );
 
   point.attributes = {
@@ -748,6 +748,7 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
     bestGateway:
       GATEWAYS[sensor.bestGateway]?.name || sensor.bestGateway || "n/a",
     bestRssi: sensor.bestRssi ?? "n/a",
+    datr: sensor.datr || "n/a",
   };
 
   point.popupTemplate = {
@@ -766,6 +767,7 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
       "Best gateway: {bestGateway}<br>" +
       "Best RSSI: {bestRssi} dBm<br>" +
       "Gateways: {gatewayList}<br>" +
+      "Data rate: {datr}<br>" +
       "Last: {lastSeen}",
   };
 
