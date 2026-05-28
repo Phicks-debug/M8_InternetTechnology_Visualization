@@ -138,19 +138,45 @@ window.require(
       },
     });
 
+    const TOTAL_CAMERA = {
+      position: {
+        longitude: 6.8449,
+        latitude: 52.2288,
+        z: 1200,
+      },
+      heading: 28,
+      tilt: 60,
+    };
+
+    const RAVELIJN_CAMERA = {
+      position: {
+        longitude: 6.8536,
+        latitude: 52.237,
+        z: 90,
+      },
+      heading: 28,
+      tilt: 80,
+    };
+
+    const GATEWAY_MENU_ITEMS = [
+      { key: "total", label: "Total" },
+      { key: "a8:40:41:1e:ad:fc:41:50", label: "Meander" },
+      { key: "a8:40:41:1e:e8:90:41:50", label: "Vrijhof" },
+      { key: "00:00:02:4b:08:03:01:bf", label: "Spiegel" },
+      { key: "ravelijn", label: "Ravelijn" },
+    ];
+
     // render each button based on gate way for zoom in to building
     function renderGatewayMenu() {
       const container = document.getElementById("gateway-menus");
       if (!container) return;
 
-      container.innerHTML = Object.entries(GATEWAYS)
-        .map(
-          ([address, gateway]) =>
-            `
-    <button type="button" data-gateway="${address}">${gateway.name}</button>
+      container.innerHTML = GATEWAY_MENU_ITEMS.map(
+        (item) =>
+          `
+      <button type="button" data-gateway="${item.key}">${item.label}</button>
     `,
-        )
-        .join("");
+      ).join("");
     }
 
     function bindGatewayMenu() {
@@ -161,8 +187,8 @@ window.require(
         const button = event.target.closest("button[data-gateway]");
         if (!button) return;
 
-        const address = button.dataset.gateway;
-        zoomToGateway(address);
+        const key = button.dataset.gateway;
+        zoomToGateway(key);
 
         container.querySelectorAll("button").forEach((item) => {
           item.classList.remove("active");
@@ -171,15 +197,24 @@ window.require(
       });
     }
 
-    function zoomToGateway(address) {
-      const gateway = GATEWAYS[address];
+    function zoomToGateway(key) {
+      if (key === "total") {
+        view.goTo(TOTAL_CAMERA, { duration: 1600 });
+        return;
+      }
+      if (key === "ravelijn") {
+        view.goTo(RAVELIJN_CAMERA, { duration: 1600 });
+        return;
+      }
+
+      const gateway = GATEWAYS[key];
       if (!gateway) return;
 
       view.goTo(
         {
           position: {
-            longitude: gateway.longitude - 0.001,
-            latitude: gateway.latitude - 0.001,
+            longitude: gateway.longitude - 0.0018,
+            latitude: gateway.latitude - 0.0018,
             z: gateway.altitude + 80,
           },
           heading: 28,
