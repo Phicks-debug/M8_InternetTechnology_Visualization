@@ -9,6 +9,7 @@ const PACKET_AVERAGE_BYTES = 15;
 const WS_URL = "ws://192.87.172.82:1337";
 const BUILDINGS_ITEM_ID = "c444b24b184c4523a5dc96248bfea4e1";
 const sessionStartedAt = Date.now();
+const knownSensors = new Map();
 
 let selectedScope = "total";
 
@@ -57,6 +58,96 @@ const stats = {
 
 const sensors = new Map();
 const flows = [];
+
+async function loadKnownSensors() {
+  try {
+    const response = await fetch("./sensor_locations(lora).csv");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const text = await response.text();
+    parseKnownSensorsCsv(text);
+    console.log(`Loaded ${knownSensors.size} known sensor locations`);
+  } catch (error) {
+    console.error("Could not load sensor_location(lora).csv: ", error);
+  }
+}
+
+function parseKnownSensorsCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return;
+
+  const rows = lines.map(parseCsvLine);
+  const header = rows[0];
+
+  const euiIndex = header.indexOf("Sensor_Eui");
+  const lonIndex = header.indexOf("St_X");
+  const latIndex = header.indexOf("St_Y");
+  const altIndex = header.indexOf("Altitude_Masl");
+  const roomIndex = header.indexOf("Roomname");
+  const floorIndex = header.indexOf("Mazemap_Floor");
+
+  if (euiIndex === -1 || lonIndex === -1 || latIndex === -1) return;
+
+  for (let index = 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    const eui = normalizeEui(row[euiIndex]);
+    const longitude = Number(row[lonIndex]);
+    const latitude = Number(row[latIndex]);
+    const altitudeRaw = row[altIndex];
+    const altitude = Number(altitudeRaw);
+    const room = row[roomIndex] || null;
+    const floor = row[floorIndex] || null;
+
+    if (!eui) continue;
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) continue;
+
+    knownSensors.set(eui, {
+      longitude,
+      latitude,
+      altitude: Number.isFinite(altitude) ? altitude : null,
+      room,
+      floor,
+    });
+  }
+}
+
+function parseCsvLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  result.push(current);
+  return result;
+}
+
+function normalizeEui(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
 
 window.require(
   [
@@ -231,9 +322,10 @@ window.require(
       );
     }
 
-    view.when(() => {
+    view.when(async () => {
       addGateways(Graphic, Point, Polyline, gatewayLayer);
       prepareBuildingStyling(buildingsLayer);
+      await loadKnownSensors();
       connectWS({ Graphic, Point, Polyline, sensorLayer, flowLayer });
       renderGatewayMenu();
       bindGatewayMenu();
@@ -423,9 +515,16 @@ function handleMessage(message, context) {
 
 function createSensorPosition(gateway, message) {
   const jitter = () => (Math.random() - 0.5) * 0.00042;
+
+  const deviceEui = normalizeEui(message.device_eui);
+  const known = knownSensors.get(deviceEui);
+
+  const latitude = known ? known.latitude : gateway.latitude + jitter();
+  const longitude = known ? known.longitude : gateway.longitude + jitter();
+
   return {
-    latitude: gateway.latitude + jitter(),
-    longitude: gateway.longitude + jitter(),
+    latitude,
+    longitude,
     name:
       message.device_name ||
       message.device_eui ||
@@ -435,17 +534,22 @@ function createSensorPosition(gateway, message) {
     snr: message.lsnr,
     gateway: gateway.name,
     gatewayAddress: message.gateway,
-    altitude: sensorAltitude(message, gateway),
+    altitude: sensorAltitude(message, gateway, known),
     lastPayload: message.size || 0,
     lastSeen: Date.now(),
+    room: known?.room || null,
+    floor: known?.floor || null,
+    knownLocation: Boolean(known),
   };
 }
 
-function sensorAltitude(message, gateway) {
+function sensorAltitude(message, gateway, knownSensor = null) {
   const value =
     message.altitude ?? message.elevation ?? message.height ?? message.z;
   const numeric = Number(value);
   if (Number.isFinite(numeric)) return numeric;
+  const knownAltitude = Number(knownSensor?.altitude);
+  if (Number.isFinite(knownAltitude)) return knownAltitude;
 
   // No sensor height is present in the current feed, so keep simulated sensors
   // near the installation height instead of lifting them above buildings.
@@ -496,11 +600,17 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
     altitude: sensor.altitude,
     payload: sensor.lastPayload,
     lastSeen: new Date(sensor.lastSeen).toLocaleTimeString(),
+    room: sensor.room || "n/a",
+    floor: sensor.floor || "n/a",
+    locationType: sensor.knownLocation
+      ? "Known sensor CSV"
+      : "Estimated near gateway",
   };
+
   point.popupTemplate = {
     title: "{name}",
     content:
-      "Gateway: {gateway}<br>Height: {altitude} m<br>RSSI: {rssi} dBm<br>SNR: {snr} dB<br>Payload: {payload} bytes<br>Last: {lastSeen}",
+      "Gateway: {gateway}<br>Locationsource: {locationType}<br>Room: {room}<br>Floor: {floor}<br>Height: {altitude} m<br>RSSI: {rssi} dBm<br>SNR: {snr} dB<br>Payload: {payload} bytes<br>Last: {lastSeen}",
   };
 
   if (!existingStem) layer.add(stem);
