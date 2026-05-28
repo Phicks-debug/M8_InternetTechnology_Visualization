@@ -92,8 +92,7 @@
     }
 
     .mini-head,
-    .mini-line,
-    .activity-row {
+    .mini-line {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -121,38 +120,6 @@
     .mini-line strong {
       color: var(--text);
       font-size: 13px;
-    }
-
-    .activity {
-      padding-top: 8px;
-      display: grid;
-      gap: 6px;
-    }
-
-    .activity-row {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .activity-row strong {
-      color: var(--text);
-      font-weight: 800;
-    }
-
-    .meter {
-      width: 54px;
-      height: 5px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: rgba(23, 35, 33, 0.12);
-    }
-
-    .meter span {
-      display: block;
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--app-blue), var(--app-amber), var(--app-red));
     }
 
     .legend {
@@ -196,14 +163,7 @@
       height: 3px;
       border-radius: 999px;
       border: 0;
-      background: linear-gradient(90deg, var(--app-blue), var(--app-amber));
-    }
-    .swatch.activity {
-      width: 22px;
-      height: 8px;
-      border-radius: 999px;
-      border: 0;
-      background: linear-gradient(90deg, #2f7fd2, var(--app-amber), var(--app-red));
+      background: linear-gradient(90deg, var(--app-blue), var(--app-green), var(--app-amber), var(--app-red));
     }
 
     .esri-ui-top-left {
@@ -263,9 +223,6 @@
         <div class="mini-line"><span>Packets</span><strong id="total-msgs">0</strong></div>
         <div class="mini-line"><span>Devices</span><strong id="active-devices">0</strong></div>
         <div class="mini-line"><span>Last</span><strong id="last-msg">-</strong></div>
-        <div class="activity" id="activity-list">
-          <div class="activity-row"><span>No recent building activity</span><strong>-</strong></div>
-        </div>
       </section>
 
       <section class="legend" aria-label="Legend">
@@ -274,8 +231,7 @@
         <div class="legend-row"><span class="swatch strong"></span>Strong RSSI</div>
         <div class="legend-row"><span class="swatch medium"></span>Medium RSSI</div>
         <div class="legend-row"><span class="swatch weak"></span>Weak RSSI</div>
-        <div class="legend-row"><span class="swatch flow"></span>Packet curve</div>
-        <div class="legend-row"><span class="swatch activity"></span>Building activity</div>
+        <div class="legend-row"><span class="swatch flow"></span>Payload size</div>
       </section>
     </div>
   </div>
