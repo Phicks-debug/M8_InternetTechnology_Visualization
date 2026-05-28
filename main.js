@@ -10,6 +10,8 @@ const WS_URL = "ws://192.87.172.82:1337";
 const BUILDINGS_ITEM_ID = "c444b24b184c4523a5dc96248bfea4e1";
 const sessionStartedAt = Date.now();
 const knownSensors = new Map();
+const deviceReceptions = new Map();
+const MULTI_RX_WINDOW = 100000;
 
 let selectedScope = "total";
 
@@ -329,7 +331,9 @@ window.require(
       connectWS({ Graphic, Point, Polyline, sensorLayer, flowLayer });
       renderGatewayMenu();
       bindGatewayMenu();
-      setInterval(() => pruneSensors(sensorLayer), 5000);
+      setInterval(() => {
+        (pruneSensors(sensorLayer), pruneDeviceReceptions());
+      }, 5000);
       requestAnimationFrame(() => animateFlows(Point, Polyline));
       updateStats();
     });
@@ -454,7 +458,16 @@ function handleMessage(message, context) {
     message.device_eui || message.device_addr || message.device_name;
   if (!deviceKey) return;
 
+  recordReception(deviceKey, message);
+  const multi = getMultiGatewaySummary(deviceKey);
+
   const sensor = createSensorPosition(gateway, message);
+  sensor.multiGateway = multi.isMultiGateway;
+  sensor.gatewayCount = multi.gatewayCount;
+  sensor.gatewayList = multi.gateways;
+  sensor.bestGateway = multi.bestGateway;
+  sensor.bestRssi = multi.bestRssi;
+
   sensors.set(deviceKey, sensor);
 
   updateSensorGraphic(
@@ -521,6 +534,102 @@ function handleMessage(message, context) {
   updateStats();
 }
 
+function recordReception(deviceKey, message) {
+  const now = Date.now();
+  const gateway = message.gateway;
+
+  if (!deviceReceptions.has(deviceKey)) {
+    deviceReceptions.set(deviceKey, {
+      latestByGateway: new Map(),
+      recentEvents: [],
+    });
+  }
+
+  const entry = deviceReceptions.get(deviceKey);
+
+  entry.latestByGateway.set(gateway, {
+    time: now,
+    rssi: Number(message.rssi),
+    snr: Number(message.lsnr),
+    datr: message.datr || null,
+  });
+
+  entry.recentEvents.push({
+    gateway,
+    time: now,
+    rssi: Number(message.rssi),
+    snr: Number(message.lsnr),
+    datr: message.datr || null,
+  });
+
+  entry.recentEvents = entry.recentEvents.filter(
+    (event) => now - event.time <= MULTI_RX_WINDOW,
+  );
+
+  entry.latestByGateway.forEach((value, key) => {
+    if (now - value.time > MULTI_RX_WINDOW) {
+      entry.latestByGateway.delete(key);
+    }
+  });
+
+  console.log(
+    "RX",
+    deviceKey,
+    [...entry.latestByGateway.keys()],
+    entry.latestByGateway.size,
+  );
+
+  return entry;
+}
+
+function getMultiGatewaySummary(deviceKey) {
+  const entry = deviceReceptions.get(deviceKey);
+  if (!entry) {
+    return {
+      gatewayCount: 0,
+      gateways: [],
+      bestGateway: null,
+      bestRssi: null,
+      isMultiGateway: false,
+    };
+  }
+
+  const latestEvents = [];
+  entry.latestByGateway.forEach((value, gateway) => {
+    if (Date.now() - value.time <= MULTI_RX_WINDOW) {
+      latestEvents.push({ gateway, ...value });
+    }
+  });
+
+  latestEvents.sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999));
+
+  return {
+    gatewayCount: latestEvents.length,
+    gateways: latestEvents.map((item) => item.gateway),
+    bestGateway: latestEvents[0]?.gateway || null,
+    bestRssi: latestEvents[0]?.rssi ?? null,
+    isMultiGateway: latestEvents.length >= 2,
+  };
+}
+
+function pruneDeviceReceptions() {
+  const now = Date.now();
+  deviceReceptions.forEach((entry, key) => {
+    entry.recentEvents = entry.recentEvents.filter(
+      (event) => now - event.time <= MULTI_RX_WINDOW,
+    );
+
+    entry.latestByGateway.forEach((value, gateway) => {
+      if (now - value.time > MULTI_RX_WINDOW) {
+        entry.latestByGateway.delete(gateway);
+      }
+    });
+
+    if (!entry.recentEvents.length && !entry.latestByGateway.size) {
+      deviceReceptions.delete(key);
+    }
+  });
+}
 function topDatr(counts) {
   let best = null;
   let bestCount = 0;
@@ -609,7 +718,13 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
     longitude: sensor.longitude,
     z: visibleAltitude,
   });
-  point.symbol = pointSymbol(rssiColor(sensor.rssi), "#ffffff", 10);
+
+  point.symbol = pointSymbol(
+    rssiColor(sensor.rssi),
+    sensor.multiGateway ? "#123040" : "#ffffff",
+    sensor.multiGateway ? 12 : 10,
+  );
+
   point.attributes = {
     key,
     role: "point",
@@ -625,12 +740,33 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
     locationType: sensor.knownLocation
       ? "Known sensor CSV"
       : "Estimated near gateway",
+    multiGateway: sensor.multiGateway ? "Yes" : "No",
+    gatewayCount: sensor.gatewayCount || 1,
+    gatewayList: (sensor.gatewayList || [])
+      .map((id) => GATEWAYS[id]?.name || id)
+      .join(", "),
+    bestGateway:
+      GATEWAYS[sensor.bestGateway]?.name || sensor.bestGateway || "n/a",
+    bestRssi: sensor.bestRssi ?? "n/a",
   };
 
   point.popupTemplate = {
     title: "{name}",
     content:
-      "Gateway: {gateway}<br>Locationsource: {locationType}<br>Room: {room}<br>Floor: {floor}<br>Height: {altitude} m<br>RSSI: {rssi} dBm<br>SNR: {snr} dB<br>Payload: {payload} bytes<br>Last: {lastSeen}",
+      "Gateway: {gateway}<br>" +
+      "Location source: {locationType}<br>" +
+      "Room: {room}<br>" +
+      "Floor: {floor}<br>" +
+      "Height: {altitude} m<br>" +
+      "RSSI: {rssi} dBm<br>" +
+      "SNR: {snr} dB<br>" +
+      "Payload: {payload} bytes<br>" +
+      "Multi-gateway: {multiGateway}<br>" +
+      "Seen by: {gatewayCount} gateways<br>" +
+      "Best gateway: {bestGateway}<br>" +
+      "Best RSSI: {bestRssi} dBm<br>" +
+      "Gateways: {gatewayList}<br>" +
+      "Last: {lastSeen}",
   };
 
   if (!existingStem) layer.add(stem);
