@@ -148,7 +148,8 @@ function parseCsvLine(line) {
 function normalizeEui(value) {
   return String(value || "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[:\-\s]/g, "");
 }
 
 window.require(
@@ -661,6 +662,7 @@ function createSensorPosition(gateway, message) {
       "unknown sensor",
     rssi: message.rssi,
     snr: message.lsnr,
+    datr: message.datr || null,
     gateway: gateway.name,
     gatewayAddress: message.gateway,
     altitude: sensorAltitude(message, gateway, known),
