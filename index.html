@@ -82,6 +82,58 @@
       line-height: 1;
       letter-spacing: 0;
     }
+    .menu {
+  position: absolute;
+  top: 16px;
+  left: 340px;
+  z-index: 3;
+  pointer-events: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(39, 55, 49, 0.11);
+  backdrop-filter: blur(12px);
+  padding: 10px 12px;
+  max-width: 400px;
+}
+
+.gateway-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gateway-menu button {
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.gateway-menu button:hover {
+  background: rgba(8, 119, 185, 0.08);
+  color: var(--text);
+  border-color: rgba(8, 119, 185, 0.22);
+  transform: translateY(-1px);
+}
+
+.gateway-menu button.active {
+  background: var(--app-blue);
+  color: #ffffff;
+  border-color: var(--app-blue);
+}
+
+.gateway-menu button:focus-visible {
+  outline: 2px solid rgba(8, 119, 185, 0.25);
+  outline-offset: 2px;
+}
 
     .mini {
       top: 16px;
@@ -213,6 +265,12 @@
       <section class="title" aria-label="Map title">
         <div class="eyebrow">University of Twente</div>
         <h1>LoRa 3D Map</h1>
+      </section>
+
+      <section class="menu">
+      <nav id="gateway-menu" class="gateway-menu" aria-label="Gateway shortcuts">
+        <!-- render button from main.js -->
+      </nav>
       </section>
 
       <section class="mini" aria-label="Live telemetry">
