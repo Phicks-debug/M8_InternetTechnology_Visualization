@@ -1,7 +1,11 @@
 const CENTER = { latitude: 52.2405, longitude: 6.854 }
-const FLOW_TIMEOUT = 7000
+const FLOW_TIMEOUT = 12000
+const FLOW_TRAVEL_RATIO = 0.72
+const PACKET_VISIBLE_FROM_PROGRESS = 0.04
 const SENSOR_TIMEOUT = 60000
-const MARKER_DISPLAY_OFFSET = 20
+const FLOW_ARCH_HEIGHT = 20
+const MARKER_DISPLAY_OFFSET = 50
+const PACKET_AVERAGE_BYTES = 15
 const WS_URL = 'ws://192.87.172.82:1337'
 const BUILDINGS_ITEM_ID = 'c444b24b184c4523a5dc96248bfea4e1'
 
@@ -12,6 +16,7 @@ const GATEWAYS = {
   'a8:40:41:1e:ae:00:41:50': { name: 'Ravelijn-A', latitude: 52.23923592912191, longitude: 6.855506300926209, altitude: 4 },
   'a8:40:41:1e:da:56:c4:15:00': { name: 'Ravelijn-B', latitude: 52.23913, longitude: 6.85565, altitude: 6 },
 }
+const GATEWAY_ENTRIES = Object.entries(GATEWAYS)
 
 const stats = {
   total: 0,
@@ -24,13 +29,10 @@ const stats = {
 
 const sensors = new Map()
 const flows = []
-const buildingActivity = new Map()
-const gatewayBuildingIds = new Map()
-let buildingRendererUpdate = null
-let activeBuildingsLayer = null
 
 window.require([
   'esri/Map',
+  'esri/Ground',
   'esri/views/SceneView',
   'esri/layers/SceneLayer',
   'esri/layers/GraphicsLayer',
@@ -39,6 +41,7 @@ window.require([
   'esri/geometry/Polyline',
 ], (
   ArcGISMap,
+  Ground,
   SceneView,
   SceneLayer,
   GraphicsLayer,
@@ -50,6 +53,7 @@ window.require([
     portalItem: { id: BUILDINGS_ITEM_ID },
     title: 'Open 3D Buildings',
     opacity: 0.56,
+    elevationInfo: { mode: 'on-the-ground' },
   })
 
   const gatewayLayer = new GraphicsLayer({
@@ -69,11 +73,9 @@ window.require([
 
   const map = new ArcGISMap({
     basemap: 'topo-vector',
-    ground: 'world-elevation',
+    ground: new Ground({ layers: [] }),
     layers: [buildingsLayer, flowLayer, gatewayLayer, sensorLayer],
   })
-
-  activeBuildingsLayer = buildingsLayer
 
   const view = new SceneView({
     container: 'view',
@@ -111,17 +113,16 @@ window.require([
 
   view.when(() => {
     addGateways(Graphic, Point, Polyline, gatewayLayer)
-    prepareBuildingStyling(buildingsLayer, Point)
+    prepareBuildingStyling(buildingsLayer)
     connectWS({ Graphic, Point, Polyline, sensorLayer, flowLayer })
     setInterval(() => pruneSensors(sensorLayer), 5000)
-    setInterval(decayBuildingActivity, 1800)
-    requestAnimationFrame(() => animateFlows(Point))
+    requestAnimationFrame(() => animateFlows(Point, Polyline))
     updateStats()
   })
 })
 
 function addGateways(Graphic, Point, Polyline, layer) {
-  Object.entries(GATEWAYS).forEach(([address, gateway]) => {
+  GATEWAY_ENTRIES.forEach(([address, gateway]) => {
     const visibleAltitude = displayAltitude(gateway.altitude)
     const stem = new Graphic({
       geometry: new Polyline({
@@ -208,7 +209,7 @@ function startDemoTraffic(context) {
       device_eui: `demo-${deviceNumber}`,
       rssi: -68 - Math.floor(Math.random() * 48),
       lsnr: Number((Math.random() * 9 - 2).toFixed(1)),
-      size: 8 + Math.floor(Math.random() * 52),
+      size: demoPacketSize(),
     }, context)
   }, 1200)
 }
@@ -230,8 +231,7 @@ function handleMessage(message, context) {
   sensors.set(deviceKey, sensor)
 
   updateSensorGraphic(deviceKey, sensor, context.Graphic, context.Point, context.Polyline, context.sensorLayer)
-  createFlow(sensor, gateway, context.Graphic, context.Point, context.Polyline, context.flowLayer)
-  recordBuildingActivity(message.gateway)
+  createFlow(sensor, gateway, message.size || 0, context.Graphic, context.Point, context.Polyline, context.flowLayer)
 
   stats.total += 1
   stats.devices.add(deviceKey)
@@ -311,34 +311,23 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
   if (!existingPoint) layer.add(point)
 }
 
-function createFlow(sensor, gateway, Graphic, Point, Polyline, layer) {
+function createFlow(sensor, gateway, payloadBytes, Graphic, Point, Polyline, layer) {
   const path = curvedPath(sensor, gateway)
+  const style = packetStyle(payloadBytes)
   const line = new Graphic({
     geometry: new Polyline({
       hasZ: true,
-      paths: [path],
+      paths: [[path[0], path[1]]],
       spatialReference: { wkid: 4326 },
     }),
-    symbol: {
-      type: 'simple-line',
-      color: [20, 139, 230, 0.55],
-      width: 3,
-    },
-  })
-  const packet = new Graphic({
-    geometry: new Point({
-      longitude: path[0][0],
-      latitude: path[0][1],
-      z: path[0][2],
-    }),
-    symbol: pointSymbol('#f6b43b', '#ffffff', 6),
+    symbol: flowLineSymbol(style.color, 0.66, style.width),
   })
 
-  layer.addMany([line, packet])
-  flows.push({ path, line, packet, startedAt: performance.now() })
+  layer.add(line)
+  flows.push({ path, line, packet: null, style, Graphic, Point, layer, startedAt: performance.now() })
 }
 
-function animateFlows(Point) {
+function animateFlows(Point, Polyline) {
   const now = performance.now()
 
   for (let index = flows.length - 1; index >= 0; index -= 1) {
@@ -352,20 +341,38 @@ function animateFlows(Point) {
       continue
     }
 
-    const point = pointAlongPath(flow.path, progress)
-    flow.packet.geometry = new Point({
-      longitude: point[0],
-      latitude: point[1],
-      z: point[2],
-    })
-    flow.line.symbol = {
-      type: 'simple-line',
-      color: [20, 139, 230, Math.max(0.12, 0.5 - progress * 0.4)],
-      width: 3,
+    const travelProgress = Math.min(1, progress / FLOW_TRAVEL_RATIO)
+    if (travelProgress >= 1) {
+      if (flow.packet) {
+        removeGraphic(flow.packet)
+        flow.packet = null
+      }
+    } else if (travelProgress >= PACKET_VISIBLE_FROM_PROGRESS) {
+      const point = pointAlongPath(flow.path, travelProgress)
+      if (!flow.packet) {
+        flow.packet = new flow.Graphic({
+          symbol: pointSymbol(flow.style.color, '#ffffff', flow.style.packetSize),
+        })
+        flow.layer.add(flow.packet)
+      }
+      flow.packet.geometry = new Point({
+        longitude: point[0],
+        latitude: point[1],
+        z: point[2],
+      })
     }
+    flow.line.geometry = new Polyline({
+      hasZ: true,
+      paths: [pathUntilProgress(flow.path, travelProgress)],
+      spatialReference: { wkid: 4326 },
+    })
+
+    const fadeProgress = Math.max(0, (progress - FLOW_TRAVEL_RATIO) / (1 - FLOW_TRAVEL_RATIO))
+    const alpha = 0.2 + (0.66 * (1 - fadeProgress))
+    flow.line.symbol = flowLineSymbol(flow.style.color, alpha, flow.style.width)
   }
 
-  requestAnimationFrame(() => animateFlows(Point))
+  requestAnimationFrame(() => animateFlows(Point, Polyline))
 }
 
 function pruneSensors(sensorLayer) {
@@ -391,8 +398,7 @@ function curvedPath(sensor, gateway) {
     const t = index / steps
     const longitude = lerp(sensor.longitude, gateway.longitude, t)
     const latitude = lerp(sensor.latitude, gateway.latitude, t)
-    const lift = Math.sin(Math.PI * t) * 20
-    const z = lerp(sensorZ, gatewayZ, t) + lift
+    const z = lerp(sensorZ, gatewayZ, t) + Math.sin(Math.PI * t) * FLOW_ARCH_HEIGHT
     path.push([longitude, latitude, z])
   }
 
@@ -413,6 +419,16 @@ function pointAlongPath(path, progress) {
   ]
 }
 
+function pathUntilProgress(path, progress) {
+  if (progress >= 1) return path
+
+  const scaled = progress * (path.length - 1)
+  const index = Math.max(1, Math.floor(scaled))
+  const partial = path.slice(0, index + 1)
+  partial[partial.length - 1] = pointAlongPath(path, progress)
+  return partial
+}
+
 function pointSymbol(fill, outline, size) {
   return {
     type: 'point-3d',
@@ -423,6 +439,14 @@ function pointSymbol(fill, outline, size) {
       size,
       outline: { color: outline, size: 2 },
     }],
+  }
+}
+
+function flowLineSymbol(color, alpha, width) {
+  return {
+    type: 'simple-line',
+    color: [...color, alpha],
+    width,
   }
 }
 
@@ -441,103 +465,12 @@ function displayAltitude(altitude) {
   return altitude + MARKER_DISPLAY_OFFSET
 }
 
-function prepareBuildingStyling(buildingsLayer, Point) {
+function prepareBuildingStyling(buildingsLayer) {
   buildingsLayer.load().then(() => {
     setDefaultBuildingRenderer(buildingsLayer)
-
-    Object.entries(GATEWAYS).forEach(([address, gateway]) => {
-      queryGatewayBuilding(buildingsLayer, Point, address, gateway)
-    })
   }).catch((error) => {
-    console.warn('Building activity styling could not initialize:', error)
+    console.warn('Building styling could not initialize:', error)
   })
-}
-
-function queryGatewayBuilding(buildingsLayer, Point, address, gateway) {
-  const query = buildingsLayer.createQuery()
-  query.geometry = new Point({
-    latitude: gateway.latitude,
-    longitude: gateway.longitude,
-    spatialReference: { wkid: 4326 },
-  })
-  query.distance = 45
-  query.units = 'meters'
-  query.spatialRelationship = 'intersects'
-  query.outFields = [buildingsLayer.objectIdField]
-  query.returnGeometry = false
-  query.num = 4
-
-  buildingsLayer.queryFeatures(query).then((result) => {
-    const ids = result.features
-      .map((feature) => feature.attributes?.[buildingsLayer.objectIdField])
-      .filter((id) => id !== undefined && id !== null)
-
-    if (ids.length) {
-      gatewayBuildingIds.set(address, ids)
-      scheduleBuildingRendererUpdate()
-    }
-  }).catch(() => {
-    gatewayBuildingIds.set(address, [])
-  })
-}
-
-function recordBuildingActivity(address) {
-  const current = buildingActivity.get(address) || 0
-  buildingActivity.set(address, Math.min(12, current + 2.4))
-  scheduleBuildingRendererUpdate()
-  updateActivityList()
-}
-
-function decayBuildingActivity() {
-  let changed = false
-
-  buildingActivity.forEach((value, address) => {
-    const next = value * 0.82
-    if (next < 0.2) {
-      buildingActivity.delete(address)
-    } else {
-      buildingActivity.set(address, next)
-    }
-    changed = true
-  })
-
-  if (!changed) return
-
-  scheduleBuildingRendererUpdate()
-  updateActivityList()
-}
-
-function scheduleBuildingRendererUpdate() {
-  if (buildingRendererUpdate || !activeBuildingsLayer) return
-
-  buildingRendererUpdate = window.setTimeout(() => {
-    buildingRendererUpdate = null
-    updateBuildingRenderer()
-  }, 120)
-}
-
-function updateBuildingRenderer() {
-  if (!activeBuildingsLayer?.objectIdField) return
-
-  const uniqueValueInfos = []
-  buildingActivity.forEach((value, address) => {
-    const ids = gatewayBuildingIds.get(address) || []
-    const level = activityLevel(value)
-    ids.forEach((id) => {
-      uniqueValueInfos.push({
-        value: id,
-        symbol: buildingSymbol(level.building),
-        label: `${GATEWAYS[address]?.name || 'Active building'} activity`,
-      })
-    })
-  })
-
-  activeBuildingsLayer.renderer = {
-    type: 'unique-value',
-    field: activeBuildingsLayer.objectIdField,
-    defaultSymbol: buildingSymbol([226, 231, 224, 0.5]),
-    uniqueValueInfos,
-  }
 }
 
 function setDefaultBuildingRenderer(buildingsLayer) {
@@ -562,33 +495,6 @@ function buildingSymbol(color) {
   }
 }
 
-function activityLevel(value) {
-  if (value > 7) {
-    return {
-      fill: [225, 75, 75, 0.36],
-      outline: [225, 75, 75, 0.75],
-      building: [225, 75, 75, 0.82],
-      label: 'High',
-    }
-  }
-
-  if (value > 3) {
-    return {
-      fill: [230, 163, 49, 0.34],
-      outline: [230, 163, 49, 0.72],
-      building: [230, 163, 49, 0.82],
-      label: 'Medium',
-    }
-  }
-
-  return {
-    fill: [47, 127, 210, 0.3],
-    outline: [47, 127, 210, 0.68],
-    building: [47, 127, 210, 0.72],
-    label: 'Low',
-  }
-}
-
 function rssiColor(rssi) {
   if (!rssi || rssi <= -100) return '#e14b4b'
   if (rssi <= -80) return '#e6a331'
@@ -606,32 +512,6 @@ function updateStats() {
   setText('last-msg', stats.lastTime ? new Date(stats.lastTime).toLocaleTimeString() : '-')
   setText('ws-status', stats.source)
   setText('source-mode', stats.source === 'Connecting' ? 'link' : 'feed')
-  updateActivityList()
-}
-
-function updateActivityList() {
-  const activity = document.getElementById('activity-list')
-  if (!activity) return
-
-  const rows = Object.entries(GATEWAYS)
-    .map(([address, gateway]) => ({
-      name: gateway.name,
-      value: buildingActivity.get(address) || 0,
-    }))
-    .filter((row) => row.value > 0.2)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 5)
-
-  activity.innerHTML = rows.length
-    ? rows.map((row) => {
-      const level = activityLevel(row.value)
-      const width = Math.min(100, Math.round(row.value * 8))
-      return `<div class="activity-row">
-        <span>${row.name}</span>
-        <div class="meter" title="${level.label} activity"><span style="width:${width}%"></span></div>
-      </div>`
-    }).join('')
-    : '<div class="activity-row"><span>No recent building activity</span><strong>-</strong></div>'
 }
 
 function setText(id, value) {
@@ -642,6 +522,52 @@ function setText(id, value) {
 function randomEntry(value) {
   const entries = Object.entries(value)
   return entries[Math.floor(Math.random() * entries.length)]
+}
+
+function demoPacketSize() {
+  return Math.round(7 + Math.random() * 12 + Math.random() * 12)
+}
+
+function packetStyle(bytes) {
+  const value = Number.isFinite(Number(bytes)) && Number(bytes) > 0 ? Number(bytes) : PACKET_AVERAGE_BYTES
+  const color = packetColor(value)
+  const normalized = clamp((value - 6) / 34, 0, 1)
+
+  return {
+    color,
+    packetSize: 6 + normalized * 4,
+    width: 2.6 + normalized * 2.2,
+  }
+}
+
+function packetColor(bytes) {
+  const stops = [
+    { value: 6, color: [34, 128, 213] },
+    { value: PACKET_AVERAGE_BYTES, color: [47, 191, 105] },
+    { value: 26, color: [230, 163, 49] },
+    { value: 46, color: [225, 75, 75] },
+  ]
+
+  if (bytes <= stops[0].value) return stops[0].color
+
+  for (let index = 1; index < stops.length; index += 1) {
+    const previous = stops[index - 1]
+    const next = stops[index]
+    if (bytes <= next.value) {
+      const amount = (bytes - previous.value) / (next.value - previous.value)
+      return interpolateColor(previous.color, next.color, amount)
+    }
+  }
+
+  return stops[stops.length - 1].color
+}
+
+function interpolateColor(start, end, amount) {
+  return start.map((value, index) => Math.round(lerp(value, end[index], amount)))
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value))
 }
 
 function removeGraphic(graphic) {
