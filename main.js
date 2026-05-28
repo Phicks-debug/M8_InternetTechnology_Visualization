@@ -1,7 +1,7 @@
 const CENTER = { latitude: 52.2405, longitude: 6.854 }
 const FLOW_TIMEOUT = 7000
 const SENSOR_TIMEOUT = 60000
-const MARKER_DISPLAY_OFFSET = 72
+const MARKER_DISPLAY_OFFSET = 20
 const WS_URL = 'ws://192.87.172.82:1337'
 const BUILDINGS_ITEM_ID = 'c444b24b184c4523a5dc96248bfea4e1'
 
@@ -229,7 +229,7 @@ function handleMessage(message, context) {
   const sensor = createSensorPosition(gateway, message)
   sensors.set(deviceKey, sensor)
 
-  updateSensorGraphic(deviceKey, sensor, context.Graphic, context.Point, context.sensorLayer)
+  updateSensorGraphic(deviceKey, sensor, context.Graphic, context.Point, context.Polyline, context.sensorLayer)
   createFlow(sensor, gateway, context.Graphic, context.Point, context.Polyline, context.flowLayer)
   recordBuildingActivity(message.gateway)
 
@@ -267,18 +267,33 @@ function sensorAltitude(message, gateway) {
   return Math.max(1.5, Math.min(8, gateway.altitude || 1.5))
 }
 
-function updateSensorGraphic(key, sensor, Graphic, Point, layer) {
-  const existing = layer.graphics.find((graphic) => graphic.attributes?.key === key)
-  const graphic = existing || new Graphic({ attributes: { key } })
+function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
+  const visibleAltitude = displayAltitude(sensor.altitude)
+  const existingPoint = layer.graphics.find((graphic) => graphic.attributes?.key === key && graphic.attributes?.role === 'point')
+  const existingStem = layer.graphics.find((graphic) => graphic.attributes?.key === key && graphic.attributes?.role === 'stem')
+  const point = existingPoint || new Graphic({ attributes: { key, role: 'point' } })
+  const stem = existingStem || new Graphic({ attributes: { key, role: 'stem' } })
 
-  graphic.geometry = new Point({
+  stem.geometry = new Polyline({
+    hasZ: true,
+    paths: [[
+      [sensor.longitude, sensor.latitude, sensor.altitude],
+      [sensor.longitude, sensor.latitude, visibleAltitude],
+    ]],
+    spatialReference: { wkid: 4326 },
+  })
+  stem.symbol = stemSymbol()
+  stem.attributes = { key, role: 'stem' }
+
+  point.geometry = new Point({
     latitude: sensor.latitude,
     longitude: sensor.longitude,
-    z: sensor.altitude,
+    z: visibleAltitude,
   })
-  graphic.symbol = pointSymbol(rssiColor(sensor.rssi), '#ffffff', 8, { callout: true })
-  graphic.attributes = {
+  point.symbol = pointSymbol(rssiColor(sensor.rssi), '#ffffff', 10)
+  point.attributes = {
     key,
+    role: 'point',
     name: sensor.name,
     gateway: sensor.gateway,
     rssi: sensor.rssi ?? 'n/a',
@@ -287,12 +302,13 @@ function updateSensorGraphic(key, sensor, Graphic, Point, layer) {
     payload: sensor.lastPayload,
     lastSeen: new Date(sensor.lastSeen).toLocaleTimeString(),
   }
-  graphic.popupTemplate = {
+  point.popupTemplate = {
     title: '{name}',
     content: 'Gateway: {gateway}<br>Height: {altitude} m<br>RSSI: {rssi} dBm<br>SNR: {snr} dB<br>Payload: {payload} bytes<br>Last: {lastSeen}',
   }
 
-  if (!existing) layer.add(graphic)
+  if (!existingStem) layer.add(stem)
+  if (!existingPoint) layer.add(point)
 }
 
 function createFlow(sensor, gateway, Graphic, Point, Polyline, layer) {
@@ -358,8 +374,8 @@ function pruneSensors(sensorLayer) {
     if (now - sensor.lastSeen <= SENSOR_TIMEOUT) return
 
     sensors.delete(key)
-    const graphic = sensorLayer.graphics.find((item) => item.attributes?.key === key)
-    if (graphic) sensorLayer.remove(graphic)
+    const graphics = sensorLayer.graphics.filter((item) => item.attributes?.key === key)
+    sensorLayer.removeMany(graphics)
   })
 
   updateStats()
@@ -368,8 +384,8 @@ function pruneSensors(sensorLayer) {
 function curvedPath(sensor, gateway) {
   const steps = 18
   const path = []
-  const sensorZ = sensor.altitude + FLOW_ANCHOR_OFFSET
-  const gatewayZ = gateway.altitude + FLOW_ANCHOR_OFFSET
+  const sensorZ = displayAltitude(sensor.altitude)
+  const gatewayZ = displayAltitude(gateway.altitude)
 
   for (let index = 0; index <= steps; index += 1) {
     const t = index / steps
@@ -397,40 +413,32 @@ function pointAlongPath(path, progress) {
   ]
 }
 
-function pointSymbol(fill, outline, size, options = {}) {
-  if (options.callout) {
-    return {
-      type: 'point-3d',
-      verticalOffset: {
-        screenLength: 74,
-        minWorldLength: 24,
-        maxWorldLength: 180,
-      },
-      callout: {
-        type: 'line',
-        color: [18, 48, 64, 0.82],
-        size: 1.5,
-        border: {
-          color: [255, 255, 255, 0.92],
-        },
-      },
-      symbolLayers: [{
-        type: 'icon',
-        resource: { primitive: 'circle' },
-        material: { color: fill },
-        size: size + 2,
-        outline: { color: outline, size: 2.2 },
-      }],
-    }
-  }
-
+function pointSymbol(fill, outline, size) {
   return {
-    type: 'simple-marker',
-    style: 'circle',
-    color: fill,
-    size,
-    outline: { color: outline, width: 1.2 },
+    type: 'point-3d',
+    symbolLayers: [{
+      type: 'icon',
+      resource: { primitive: 'circle' },
+      material: { color: fill },
+      size,
+      outline: { color: outline, size: 2 },
+    }],
   }
+}
+
+function stemSymbol() {
+  return {
+    type: 'line-3d',
+    symbolLayers: [{
+      type: 'line',
+      material: { color: [18, 48, 64, 0.74] },
+      size: 1.4,
+    }],
+  }
+}
+
+function displayAltitude(altitude) {
+  return altitude + MARKER_DISPLAY_OFFSET
 }
 
 function prepareBuildingStyling(buildingsLayer, Point) {
