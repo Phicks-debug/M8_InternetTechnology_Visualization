@@ -6,8 +6,8 @@ const SENSOR_TIMEOUT = 60000
 const FLOW_ARCH_HEIGHT = 20
 const MARKER_DISPLAY_OFFSET = 50
 const PACKET_AVERAGE_BYTES = 15
-const WS_URL = 'ws://192.87.172.82:1337'
-const BUILDINGS_ITEM_ID = 'c444b24b184c4523a5dc96248bfea4e1'
+const WS_URL = 'ws://192.87.172.82:1337' //WebSocket protocol, Sever IP address, port number
+const BUILDINGS_ITEM_ID = 'c444b24b184c4523a5dc96248bfea4e1' //The 3D map
 
 const GATEWAYS = {
   'a8:40:41:1e:ad:fc:41:50': { name: 'Meander', latitude: 52.236887101823, longitude: 6.859867572784425, altitude: 4 },
@@ -56,16 +56,15 @@ window.require([
     elevationInfo: { mode: 'on-the-ground' },
   })
 
+//Graphics layers
   const gatewayLayer = new GraphicsLayer({
     title: 'Gateways',
     elevationInfo: { mode: 'relative-to-ground' },
   })
-
   const sensorLayer = new GraphicsLayer({
     title: 'Sensors',
     elevationInfo: { mode: 'relative-to-ground' },
   })
-
   const flowLayer = new GraphicsLayer({
     title: 'Packet flow',
     elevationInfo: { mode: 'relative-to-ground' },
@@ -77,6 +76,7 @@ window.require([
     layers: [buildingsLayer, flowLayer, gatewayLayer, sensorLayer],
   })
 
+//Camera view
   const view = new SceneView({
     container: 'view',
     map,
@@ -153,13 +153,15 @@ function addGateways(Graphic, Point, Polyline, layer) {
   })
 }
 
+//Connecting live Websocket data to back end server
 function connectWS(context) {
   setSource('Connecting')
 
   let ws
   try {
     ws = new WebSocket(WS_URL)
-  } catch {
+  }
+  catch {
     startDemoTraffic(context)
     return
   }
