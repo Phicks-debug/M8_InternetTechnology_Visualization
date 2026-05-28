@@ -8,6 +8,9 @@ const MARKER_DISPLAY_OFFSET = 50;
 const PACKET_AVERAGE_BYTES = 15;
 const WS_URL = "ws://192.87.172.82:1337";
 const BUILDINGS_ITEM_ID = "c444b24b184c4523a5dc96248bfea4e1";
+const sessionStartedAt = Date.now();
+
+let selectedScope = "total";
 
 const GATEWAYS = {
   "a8:40:41:1e:ad:fc:41:50": {
@@ -174,7 +177,7 @@ window.require(
       container.innerHTML = GATEWAY_MENU_ITEMS.map(
         (item) =>
           `
-      <button type="button" data-gateway="${item.key}">${item.label}</button>
+      <button type="button" data-gateway="${item.key}" class="${item.key === selectedScope ? "active" : ""}">${item.label}</button>
     `,
       ).join("");
     }
@@ -188,7 +191,9 @@ window.require(
         if (!button) return;
 
         const key = button.dataset.gateway;
+        selectedScope = key;
         zoomToGateway(key);
+        updateStats();
 
         container.querySelectorAll("button").forEach((item) => {
           item.classList.remove("active");
@@ -381,7 +386,38 @@ function handleMessage(message, context) {
   stats.devices.add(deviceKey);
   stats.lastTime = Date.now();
   stats.totalBytes += message.size || 0;
-  stats.perGateway[gateway.name] = (stats.perGateway[gateway.name] || 0) + 1;
+  // stats.perGateway[gateway.name] = (stats.perGateway[gateway.name] || 0) + 1;
+
+  const gatewayKey = message.gateway;
+
+  if (!stats.perGateway[gatewayKey]) {
+    stats.perGateway[gatewayKey] = {
+      packets: 0,
+      rssiSum: 0,
+      rssiCount: 0,
+      snrSum: 0,
+      snrCount: 0,
+      devices: new Set(),
+      lastTime: null,
+    };
+  }
+
+  const bucket = stats.perGateway[gatewayKey];
+  bucket.packets += 1;
+  bucket.lastTime = Date.now();
+  bucket.devices.add(deviceKey);
+
+  const rssi = Number(message.rssi);
+  if (Number.isFinite(rssi)) {
+    bucket.rssiSum += rssi;
+    bucket.rssiCount += 1;
+  }
+
+  const snr = Number(message.lsnr);
+  if (Number.isFinite(snr)) {
+    bucket.snrSum += snr;
+    bucket.snrCount += 1;
+  }
   updateStats();
 }
 
@@ -706,15 +742,124 @@ function setSource(source) {
   updateStats();
 }
 
+// checking which scope
+function scopeLabel(scope) {
+  if (scope === "total") return "Total";
+  if (scope === "ravelijn") return "Ravelijn";
+
+  const gateway = GATEWAYS[scope];
+  return gateway?.name || "Unknown";
+}
+
+function getScopeStats(scope) {
+  if (scope === "total") {
+    let packets = 0;
+    let rssiSum = 0;
+    let rssiCount = 0;
+    let snrSum = 0;
+    let snrCount = 0;
+    let lastTime = null;
+    const devices = new Set();
+
+    Object.values(stats.perGateway).forEach((bucket) => {
+      packets += bucket.packets;
+      rssiSum += bucket.rssiSum;
+      rssiCount += bucket.rssiCount;
+      snrSum += bucket.snrSum;
+      snrCount += bucket.snrCount;
+
+      bucket.devices.forEach((device) => devices.add(device));
+
+      if (!lastTime || (bucket.lastTime && bucket.lastTime > lastTime)) {
+        lastTime = bucket.lastTime;
+      }
+    });
+    return {
+      packets,
+      rssiSum,
+      rssiCount,
+      snrSum,
+      snrCount,
+      devices,
+      lastTime,
+    };
+  }
+  if (scope === "ravelijn") {
+    const ravKeys = ["a8:40:41:1e:ae:00:41:50", "a8:40:41:1e:da:56:c4:15:00"];
+
+    let packets = 0;
+    let rssiSum = 0;
+    let rssiCount = 0;
+    let snrSum = 0;
+    let snrCount = 0;
+    let lastTime = null;
+    const devices = new Set();
+
+    ravKeys.forEach((key) => {
+      const bucket = stats.perGateway[key];
+      if (!bucket) return;
+
+      rssiSum += bucket.rssiSum;
+      rssiCount += bucket.rssiCount;
+      snrSum += bucket.snrSum;
+      snrCount += bucket.snrCount;
+
+      bucket.devices.forEach((device) => devices.add(device));
+
+      if (!lastTime || (bucket.lastTime && bucket.lastTime > lastTime)) {
+        lastTime = bucket.lastTime;
+      }
+    });
+    return {
+      packets,
+      rssiSum,
+      rssiCount,
+      snrSum,
+      snrCount,
+      devices,
+      lastTime,
+    };
+  }
+
+  const bucket = stats.perGateway[scope];
+  if (!bucket) {
+    return {
+      packets: 0,
+      rssiSum: 0,
+      rssiCount: 0,
+      snrSum: 0,
+      snrCount: 0,
+      devices: new Set(),
+      lastTime: null,
+    };
+  }
+  return bucket;
+}
+
+function formatAvg(sum, count, unit = "") {
+  if (!count) return "-";
+  return `${(sum / count).toFixed(1)}${unit}`;
+}
+
 function updateStats() {
-  setText("total-msgs", stats.total);
-  setText("active-devices", sensors.size);
+  const scopeStats = getScopeStats(selectedScope);
+  setText("total-msgs", scopeStats.packets);
+  setText("active-devices", scopeStats.devices.size);
   setText(
     "last-msg",
-    stats.lastTime ? new Date(stats.lastTime).toLocaleTimeString() : "-",
+    scopeStats.lastTime
+      ? new Date(scopeStats.lastTime).toLocaleTimeString()
+      : "-",
   );
+  setText(
+    "avg-rssi",
+    formatAvg(scopeStats.rssiSum, scopeStats.rssiCount, "dBm"),
+  );
+  setText("avg-snr", formatAvg(scopeStats.snrSum, scopeStats.snrCount, "dB"));
   setText("ws-status", stats.source);
   setText("source-mode", stats.source === "Connecting" ? "link" : "feed");
+  setText("scope-name", scopeLabel(selectedScope));
+  setText("session-started", new Date(sessionStartedAt).toLocaleTimeString());
 }
 
 function setText(id, value) {
