@@ -140,7 +140,7 @@ window.require(
 
     // render each button based on gate way for zoom in to building
     function renderGatewayMenu() {
-      const container = document.getElementById("gateway-menu");
+      const container = document.getElementById("gateway-menus");
       if (!container) return;
 
       container.innerHTML = Object.entries(GATEWAYS)
@@ -154,7 +154,7 @@ window.require(
     }
 
     function bindGatewayMenu() {
-      const container = document.getElementById("gateway-menu");
+      const container = document.getElementById("gateway-menus");
       if (!container) return;
 
       container.addEventListener("click", (event) => {

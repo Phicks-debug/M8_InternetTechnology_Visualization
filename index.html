@@ -102,7 +102,12 @@
   flex-wrap: wrap;
   gap: 8px;
 }
-
+.gateway-header {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
 .gateway-menu button {
   appearance: none;
   border: 1px solid var(--line);
@@ -269,7 +274,9 @@
 
       <section class="menu">
       <nav id="gateway-menu" class="gateway-menu" aria-label="Gateway shortcuts">
+        <div class="gateway-header">Gateway Shortcuts</div>
         <!-- render button from main.js -->
+         <div id="gateway-menus"></div>
       </nav>
       </section>
 
