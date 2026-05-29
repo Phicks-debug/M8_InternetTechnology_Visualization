@@ -323,7 +323,8 @@
         <div class="eyebrow">University of Twente</div>
         <h1>LoRa 3D Map</h1>
       </section>
-
+      
+      <!-- shortcut menu for quickly switching the selected gateway scope and camera view -->
       <section class="menu">
       <nav id="gateway-menu" class="gateway-menu" aria-label="Gateway shortcuts">
         <div class="gateway-header">Gateway Shortcuts</div>
@@ -332,9 +333,11 @@
       </nav>
       </section>
 
+      <!-- live telemetry panel showing session-based LoRa statistics for the current scope -->
       <section class="mini" aria-label="Live telemetry">
         <div class="mini-head">
           <span>Telemetry</span>
+          <!-- shows whether the app is using the live feed or demo -->
           <calcite-chip appearance="solid" scale="s"><span id="ws-status">Connecting</span>&nbsp;<span id="source-mode">link</span></calcite-chip>
         </div>
         <div class="mini-line">

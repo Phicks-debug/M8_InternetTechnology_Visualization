@@ -9,8 +9,11 @@ const PACKET_AVERAGE_BYTES = 15;
 const WS_URL = "ws://192.87.172.82:1337";
 const BUILDINGS_ITEM_ID = "c444b24b184c4523a5dc96248bfea4e1";
 const sessionStartedAt = Date.now();
+// stores sensor locations loaded from the CSV file for known device matching
 const knownSensors = new Map();
+// stores recent per-device receptions to detect multi-gateway packets
 const deviceReceptions = new Map();
+// time window for multi-gateway reception comparison
 const MULTI_RX_WINDOW = 100000;
 
 let selectedScope = "total";
@@ -61,6 +64,7 @@ const stats = {
 const sensors = new Map();
 const flows = [];
 
+// loads the known sensor location CSV and stores matched sensor metadata in knownSensors
 async function loadKnownSensors() {
   try {
     const response = await fetch("./sensor_locations(lora).csv");
@@ -74,6 +78,7 @@ async function loadKnownSensors() {
   }
 }
 
+// parse the CSV file to extract EUI, coordinates, altitude, room, and floor for known sensors
 function parseKnownSensorsCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return;
@@ -145,6 +150,7 @@ function parseCsvLine(line) {
   return result;
 }
 
+// normalizes device EUI strings so live feed IDs and CSV IDs can be compared consistently
 function normalizeEui(value) {
   return String(value || "")
     .trim()
@@ -245,6 +251,7 @@ window.require(
       tilt: 60,
     };
 
+    // middle position between Ravelijn-A and Ravelijn-B
     const RAVELIJN_CAMERA = {
       position: {
         longitude: 6.8536,
@@ -263,7 +270,7 @@ window.require(
       { key: "ravelijn", label: "Ravelijn" },
     ];
 
-    // render each button based on gate way for zoom in to building
+    // renders the top gateway menu dynamically from predefined gateway entries
     function renderGatewayMenu() {
       const container = document.getElementById("gateway-menus");
       if (!container) return;
@@ -276,6 +283,7 @@ window.require(
       ).join("");
     }
 
+    // attaches click handlers to the gateway menu for changing scope and zoom target
     function bindGatewayMenu() {
       const container = document.getElementById("gateway-menus");
       if (!container) return;
@@ -296,6 +304,7 @@ window.require(
       });
     }
 
+    // moves the 3D camera to the selected gateway or predefined overview scope
     function zoomToGateway(key) {
       if (key === "total") {
         view.goTo(TOTAL_CAMERA, { duration: 1600 });
@@ -450,6 +459,8 @@ function stopDemoTraffic() {
   demoTimer = null;
 }
 
+// main packet handler:
+// updates reception history, sensor state, map graphics, flows, and dashboard stats
 function handleMessage(message, context) {
   // console.log(JSON.stringify(message, null, 2));
   const gateway = GATEWAYS[message.gateway];
@@ -535,6 +546,7 @@ function handleMessage(message, context) {
   updateStats();
 }
 
+// records recent packet receptions per device so overlapping gateway receptions can be detected
 function recordReception(deviceKey, message) {
   const now = Date.now();
   const gateway = message.gateway;
@@ -583,6 +595,7 @@ function recordReception(deviceKey, message) {
   return entry;
 }
 
+// summarizes how many gateway recently heard the same device and which gateway had the best RSSI
 function getMultiGatewaySummary(deviceKey) {
   const entry = deviceReceptions.get(deviceKey);
   if (!entry) {
@@ -613,6 +626,7 @@ function getMultiGatewaySummary(deviceKey) {
   };
 }
 
+// removes outdated reception records outside the multi-gateway comparison window
 function pruneDeviceReceptions() {
   const now = Date.now();
   deviceReceptions.forEach((entry, key) => {
@@ -631,6 +645,8 @@ function pruneDeviceReceptions() {
     }
   });
 }
+
+// returns the most frequently observed data rate value within the selected scope
 function topDatr(counts) {
   let best = null;
   let bestCount = 0;
@@ -1021,6 +1037,7 @@ function scopeLabel(scope) {
   return gateway?.name || "Unknown";
 }
 
+// returns aggregated telemetry values for the currently selected comparison scope
 function getScopeStats(scope) {
   if (scope === "total") {
     let packets = 0;
