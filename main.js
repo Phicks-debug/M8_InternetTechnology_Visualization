@@ -18,7 +18,7 @@ const MULTI_RX_WINDOW = 100000;
 
 let selectedScope = "total";
 
-const GATEWAYS = {
+let GATEWAYS = {
   "a8:40:41:1e:ad:fc:41:50": {
     name: "Meander",
     latitude: 52.236887101823,
@@ -63,6 +63,75 @@ const stats = {
 
 const sensors = new Map();
 const flows = [];
+
+async function loadGateways() {
+  try {
+    const response = await fetch("./gateway_location(lora).csv");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const text = await response.text();
+    const loaded = parseGatewayCsv(text);
+
+    if (Object.keys(loaded).length) {
+      GATEWAYS = { ...GATEWAYS, ...loaded };
+      GATEWAY_ENTRIES = Object.entries(GATEWAYS);
+    }
+    console.log(`Loaded ${Object.keys(loaded).length} gateways from CSV`);
+  } catch (err) {
+    console.error("Could not load gateway_location(lora).csv: ", err);
+  }
+}
+
+function parseGatewayCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return {};
+
+  const rows = lines.map((line) => line.split(",").map((item) => item.trim()));
+  const header = rows[0].map((item) => item.toLowerCase());
+
+  const euiIndex = header.indexOf("eui");
+  const nameIndex = header.indexOf("name");
+  const latIndex = header.indexOf("latitude");
+  const lonIndex = header.indexOf("longitude");
+  const altIndex = header.indexOf("altitude");
+
+  if (euiIndex === -1 || latIndex === -1 || lonIndex === -1) return {};
+
+  const loaded = {};
+
+  for (let i = 1; i < rows.length; i += 1) {
+    const row = rows[i];
+    const eui = normalizeEui(row[euiIndex]);
+    const latitude = Number(row[latIndex]);
+    const longitude = Number(row[lonIndex]);
+    const altitude = Number(row[altIndex]);
+    const rawName = row[nameIndex] || eui;
+
+    if (!eui) continue;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+
+    loaded[eui] = {
+      name: mapGatewayLabel(rawName, eui),
+      latitude,
+      longitude,
+      altitude: Number.isFinite(altitude) ? altitude : 0,
+    };
+  }
+
+  return loaded;
+}
+
+function mapGatewayLabel(name, eui) {
+  const value = String(name || "").toLowerCase();
+
+  if (eui === "a840411eadfc4150") return "Meander";
+  if (eui === "a840411ee8904150") return "Vrijhof";
+  if (eui === "0000024b080301bf") return "Spiegel";
+  if (eui === "a840411eae004150") return "Ravelijn-A";
+  if (eui === "a840411da56c4150") return "Ravelijn-B";
+
+  return name;
+}
 
 // loads the known sensor location CSV and stores matched sensor metadata in knownSensors
 async function loadKnownSensors() {
@@ -262,25 +331,46 @@ window.require(
       tilt: 80,
     };
 
-    const GATEWAY_MENU_ITEMS = [
-      { key: "total", label: "Total" },
-      { key: "a8:40:41:1e:ad:fc:41:50", label: "Meander" },
-      { key: "a8:40:41:1e:e8:90:41:50", label: "Vrijhof" },
-      { key: "00:00:02:4b:08:03:01:bf", label: "Spiegel" },
-      { key: "ravelijn", label: "Ravelijn" },
-    ];
+    // const GATEWAY_MENU_ITEMS = [
+    //   { key: "total", label: "Total" },
+    //   { key: "a8:40:41:1e:ad:fc:41:50", label: "Meander" },
+    //   { key: "a8:40:41:1e:e8:90:41:50", label: "Vrijhof" },
+    //   { key: "00:00:02:4b:08:03:01:bf", label: "Spiegel" },
+    //   { key: "ravelijn", label: "Ravelijn" },
+    // ];
+
+    function getGatewayMenuItems() {
+      const items = [{ key: "total", label: "Total" }];
+
+      GATEWAY_ENTRIES.forEach(([key, gateway]) => {
+        if (
+          key === "a8:40:41:1e:ae:00:41:50" ||
+          key === "a8:40:41:1e:da:56:c4:15:00"
+        )
+          return;
+        items.push({ key, label: gateway.name });
+      });
+
+      items.push({ key: "ravelijn", label: "Ravelijn" });
+      return items;
+    }
 
     // renders the top gateway menu dynamically from predefined gateway entries
     function renderGatewayMenu() {
       const container = document.getElementById("gateway-menus");
       if (!container) return;
 
-      container.innerHTML = GATEWAY_MENU_ITEMS.map(
-        (item) =>
-          `
-      <button type="button" data-gateway="${item.key}" class="${item.key === selectedScope ? "active" : ""}">${item.label}</button>
+      const items = getGatewayMenuItems();
+
+      container.innerHTML = items
+        .map(
+          (item) => `
+      <button data-gateway="${item.key}" class="gateway-chip ${item.key === selectedScope ? "active" : ""}">
+        ${item.label}
+      </button>
     `,
-      ).join("");
+        )
+        .join("");
     }
 
     // attaches click handlers to the gateway menu for changing scope and zoom target
@@ -335,9 +425,10 @@ window.require(
     }
 
     view.when(async () => {
+      await loadGateways();
+      await loadKnownSensors();
       addGateways(Graphic, Point, Polyline, gatewayLayer);
       prepareBuildingStyling(buildingsLayer);
-      await loadKnownSensors();
       connectWS({ Graphic, Point, Polyline, sensorLayer, flowLayer });
       renderGatewayMenu();
       bindGatewayMenu();
