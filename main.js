@@ -66,7 +66,7 @@ const flows = [];
 
 async function loadGateways() {
   try {
-    const response = await fetch("./gateway_location(lora).csv");
+    const response = await fetch("./gateway_locations(lora).csv");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const text = await response.text();
@@ -78,7 +78,7 @@ async function loadGateways() {
     }
     console.log(`Loaded ${Object.keys(loaded).length} gateways from CSV`);
   } catch (err) {
-    console.error("Could not load gateway_location(lora).csv: ", err);
+    console.error("Could not load gateway_locations(lora).csv: ", err);
   }
 }
 
@@ -143,7 +143,7 @@ async function loadKnownSensors() {
     parseKnownSensorsCsv(text);
     console.log(`Loaded ${knownSensors.size} known sensor locations`);
   } catch (error) {
-    console.error("Could not load sensor_location(lora).csv: ", error);
+    console.error("Could not load sensor_locations(lora).csv: ", error);
   }
 }
 
