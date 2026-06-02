@@ -50,7 +50,7 @@ let GATEWAYS = {
     altitude: 6,
   },
 };
-const GATEWAY_ENTRIES = Object.entries(GATEWAYS);
+let GATEWAY_ENTRIES = Object.entries(GATEWAYS);
 
 const stats = {
   total: 0,
