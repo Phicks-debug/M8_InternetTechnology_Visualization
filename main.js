@@ -18,39 +18,8 @@ const MULTI_RX_WINDOW = 100000;
 
 let selectedScope = "total";
 
-let GATEWAYS = {
-  "a8:40:41:1e:ad:fc:41:50": {
-    name: "Meander",
-    latitude: 52.236887101823,
-    longitude: 6.859867572784425,
-    altitude: 4,
-  },
-  "a8:40:41:1e:e8:90:41:50": {
-    name: "Vrijhof",
-    latitude: 52.243762,
-    longitude: 6.853425,
-    altitude: 3,
-  },
-  "00:00:02:4b:08:03:01:bf": {
-    name: "Spiegel",
-    latitude: 52.23989,
-    longitude: 6.85014,
-    altitude: 54,
-  },
-  "a8:40:41:1e:ae:00:41:50": {
-    name: "Ravelijn-A",
-    latitude: 52.23923592912191,
-    longitude: 6.855506300926209,
-    altitude: 4,
-  },
-  "a8:40:41:1e:da:56:c4:15:00": {
-    name: "Ravelijn-B",
-    latitude: 52.23913,
-    longitude: 6.85565,
-    altitude: 6,
-  },
-};
-let GATEWAY_ENTRIES = Object.entries(GATEWAYS);
+let GATEWAYS = {};
+let GATEWAY_ENTRIES = [];
 
 const stats = {
   total: 0,
@@ -64,6 +33,7 @@ const stats = {
 const sensors = new Map();
 const flows = [];
 
+// loads gateway locations from the CSV file and refreshes the in-memory gateway list
 async function loadGateways() {
   try {
     const response = await fetch("./gateway_locations(lora).csv");
@@ -71,17 +41,18 @@ async function loadGateways() {
 
     const text = await response.text();
     const loaded = parseGatewayCsv(text);
+    GATEWAYS = loaded;
+    GATEWAY_ENTRIES = Object.entries(GATEWAYS);
 
-    if (Object.keys(loaded).length) {
-      GATEWAYS = { ...GATEWAYS, ...loaded };
-      GATEWAY_ENTRIES = Object.entries(GATEWAYS);
-    }
-    console.log(`Loaded ${Object.keys(loaded).length} gateways from CSV`);
+    console.log(`Loaded ${GATEWAY_ENTRIES.length} gateways from CSV`);
   } catch (err) {
     console.error("Could not load gateway_locations(lora).csv: ", err);
+    GATEWAYS = {};
+    GATEWAY_ENTRIES = [];
   }
 }
 
+// parse the gateway csv text into a gateway object keyed by normalized EUI
 function parseGatewayCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return {};
@@ -106,12 +77,14 @@ function parseGatewayCsv(text) {
     const longitude = Number(row[lonIndex]);
     const altitude = Number(row[altIndex]);
     const rawName = row[nameIndex] || eui;
+    const mappedName = mapGatewayLabel(rawName, eui);
 
     if (!eui) continue;
+    if (!mappedName) continue;
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
 
     loaded[eui] = {
-      name: mapGatewayLabel(rawName, eui),
+      name: mappedName,
       latitude,
       longitude,
       altitude: Number.isFinite(altitude) ? altitude : 0,
@@ -121,16 +94,15 @@ function parseGatewayCsv(text) {
   return loaded;
 }
 
+// maps known gateway EUIs to the display labels used in the ui, return null for unmapped gateways
 function mapGatewayLabel(name, eui) {
-  const value = String(name || "").toLowerCase();
-
   if (eui === "a840411eadfc4150") return "Meander";
   if (eui === "a840411ee8904150") return "Vrijhof";
   if (eui === "0000024b080301bf") return "Spiegel";
   if (eui === "a840411eae004150") return "Ravelijn-A";
   if (eui === "a840411da56c4150") return "Ravelijn-B";
 
-  return name;
+  return null;
 }
 
 // loads the known sensor location CSV and stores matched sensor metadata in knownSensors
@@ -310,48 +282,23 @@ window.require(
       },
     });
 
-    const TOTAL_CAMERA = {
-      position: {
-        longitude: 6.8449,
-        latitude: 52.2288,
-        z: 1200,
-      },
-      heading: 28,
-      tilt: 60,
-    };
-
-    // middle position between Ravelijn-A and Ravelijn-B
-    const RAVELIJN_CAMERA = {
-      position: {
-        longitude: 6.8536,
-        latitude: 52.237,
-        z: 90,
-      },
-      heading: 28,
-      tilt: 80,
-    };
-
-    // const GATEWAY_MENU_ITEMS = [
-    //   { key: "total", label: "Total" },
-    //   { key: "a8:40:41:1e:ad:fc:41:50", label: "Meander" },
-    //   { key: "a8:40:41:1e:e8:90:41:50", label: "Vrijhof" },
-    //   { key: "00:00:02:4b:08:03:01:bf", label: "Spiegel" },
-    //   { key: "ravelijn", label: "Ravelijn" },
-    // ];
-
+    // build the gateway menu items and groups Ravelijn
     function getGatewayMenuItems() {
       const items = [{ key: "total", label: "Total" }];
 
       GATEWAY_ENTRIES.forEach(([key, gateway]) => {
-        if (
-          key === "a8:40:41:1e:ae:00:41:50" ||
-          key === "a8:40:41:1e:da:56:c4:15:00"
-        )
+        if (gateway.name === "Ravelijn-A" || gateway.name === "Ravelijn-B")
           return;
         items.push({ key, label: gateway.name });
       });
+      const hasRavelijn = GATEWAY_ENTRIES.some(
+        ([, gateway]) =>
+          gateway.name === "Ravelijn-A" || gateway.name === "Ravelijn-B",
+      );
 
-      items.push({ key: "ravelijn", label: "Ravelijn" });
+      if (hasRavelijn) {
+        items.push({ key: "ravelijn", label: "Ravelijn" });
+      }
       return items;
     }
 
@@ -393,6 +340,27 @@ window.require(
         button.classList.add("active");
       });
     }
+
+    const TOTAL_CAMERA = {
+      position: {
+        longitude: 6.8449,
+        latitude: 52.2288,
+        z: 1200,
+      },
+      heading: 28,
+      tilt: 60,
+    };
+
+    // middle position between Ravelijn-A and Ravelijn-B
+    const RAVELIJN_CAMERA = {
+      position: {
+        longitude: 6.8536,
+        latitude: 52.237,
+        z: 90,
+      },
+      heading: 28,
+      tilt: 80,
+    };
 
     // moves the 3D camera to the selected gateway or predefined overview scope
     function zoomToGateway(key) {
@@ -444,6 +412,7 @@ window.require(
 function addGateways(Graphic, Point, Polyline, layer) {
   GATEWAY_ENTRIES.forEach(([address, gateway]) => {
     const visibleAltitude = displayAltitude(gateway.altitude);
+
     const stem = new Graphic({
       geometry: new Polyline({
         hasZ: true,
@@ -553,8 +522,9 @@ function stopDemoTraffic() {
 // main packet handler:
 // updates reception history, sensor state, map graphics, flows, and dashboard stats
 function handleMessage(message, context) {
+  const gatewayKey = normalizeEui(message.gateway);
   // console.log(JSON.stringify(message, null, 2));
-  const gateway = GATEWAYS[message.gateway];
+  const gateway = GATEWAYS[gatewayKey];
   if (!gateway) return;
 
   const deviceKey =
@@ -596,8 +566,6 @@ function handleMessage(message, context) {
   stats.lastTime = Date.now();
   stats.totalBytes += message.size || 0;
   // stats.perGateway[gateway.name] = (stats.perGateway[gateway.name] || 0) + 1;
-
-  const gatewayKey = message.gateway;
 
   if (!stats.perGateway[gatewayKey]) {
     stats.perGateway[gatewayKey] = {
@@ -831,7 +799,7 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
   point.symbol = pointSymbol(
     rssiColor(sensor.rssi),
     sensor.multiGateway ? "#123040" : "#ffffff",
-    sensor.multiGateway ? 20 : 10,
+    sensor.multiGateway ? 25 : 10,
   );
 
   point.attributes = {
@@ -1169,7 +1137,10 @@ function getScopeStats(scope) {
     };
   }
   if (scope === "ravelijn") {
-    const ravKeys = ["a8:40:41:1e:ae:00:41:50", "a8:40:41:1e:da:56:c4:15:00"];
+    const ravKeys = GATEWAY_ENTRIES.filter(
+      ([, gateway]) =>
+        gateway.name === "Ravelijn-A" || gateway.name === "Ravelijn-B",
+    ).map(([key]) => key);
 
     let packets = 0;
     let rssiSum = 0;

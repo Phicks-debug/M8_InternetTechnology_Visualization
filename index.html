@@ -274,6 +274,14 @@
       border: 0;
       background: linear-gradient(90deg, var(--app-blue), var(--app-green), var(--app-amber), var(--app-red));
     }
+    .swatch.multi {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 3px solid #123040;
+      box-sizing: border-box;
+    }
 
     .esri-ui-top-left {
       top: 126px;
@@ -405,7 +413,12 @@
           <span class="tooltip-box">Time of the most recent packet received in the selected scope.</span>
         </span>
         <span class="mini-label">Last</span></div><strong id="last-msg">-</strong></div>
+
+        <div class="mini-head">
+          <span>Telemetry</span>
+        </div>
       </section>
+      
 
       <section class="legend" aria-label="Legend">
         <div class="legend-title">The Internet of things</div>
@@ -414,6 +427,7 @@
         <div class="legend-row"><span class="swatch medium"></span>Medium RSSI</div>
         <div class="legend-row"><span class="swatch weak"></span>Weak RSSI</div>
         <div class="legend-row"><span class="swatch flow"></span>Payload size</div>
+        <div class="legend-row"><span class="swatch multi"></span>Multi-gateway reception</div>
       </section>
     </div>
   </div>
