@@ -1,4 +1,4 @@
-timestamp,source,gateway_eui,gateway_name,gateway_address,device_eui,device_addr,device_name,rssi,snr,datr,size,sensor_latitude,sensor_longitude,sensor_altitude,room,floor,known_location,multi_gateway,gateway_count,gateway_list,best_gateway,best_rssi
+timestamp,source,gateway_eui,gateway_name,gateway_address,device_eui,device_addr,device_name,rssi,snr,size,sensor_latitude,sensor_longitude,sensor_altitude,room,floor,known_location,multi_gateway,gateway_count,gateway_list,best_gateway,best_rssi
 2026-06-05T00:15:22.625Z,Live,a840411eadfc4150,Meander,,a81758fffe047d5f,01643728,POF_ME202,-75,9.2,SF7BW125,28,52.23679593002983,6.860060116436161,4,,,false,false,1,a8:40:41:1e:ad:fc:41:50,a8:40:41:1e:ad:fc:41:50,-75
 2026-06-05T00:15:27.727Z,Live,a840411eae004150,Ravelijn-A,,,260bf3f9,,-75,9.5,SF7BW125,28,52.23907591227292,6.8554076205738355,4,,,false,false,1,a8:40:41:1e:ae:00:41:50,a8:40:41:1e:ae:00:41:50,-75
 2026-06-05T00:15:41.898Z,Live,a840411eae004150,Ravelijn-A,,353431367b376e04,fe00e80d,p171108-2002525,-87,6.8,SF7BW125,18,52.23952384,6.855265086,0,RA3334,3,true,false,1,a8:40:41:1e:ae:00:41:50,a8:40:41:1e:ae:00:41:50,-87

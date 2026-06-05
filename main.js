@@ -575,7 +575,6 @@ function handleMessage(message, context) {
       rssiCount: 0,
       snrSum: 0,
       snrCount: 0,
-      datrCounts: {},
       devices: new Set(),
       lastTime: null,
     };
@@ -598,10 +597,6 @@ function handleMessage(message, context) {
     bucket.snrCount += 1;
   }
 
-  const datr = message.datr || null;
-  if (datr) {
-    bucket.datrCounts[datr] = (bucket.datrCounts[datr] || 0) + 1;
-  }
 
   updateStats();
 }
@@ -624,7 +619,6 @@ function recordReception(deviceKey, message) {
     time: now,
     rssi: Number(message.rssi),
     snr: Number(message.lsnr),
-    datr: message.datr || null,
   });
 
   entry.recentEvents.push({
@@ -632,7 +626,6 @@ function recordReception(deviceKey, message) {
     time: now,
     rssi: Number(message.rssi),
     snr: Number(message.lsnr),
-    datr: message.datr || null,
   });
 
   entry.recentEvents = entry.recentEvents.filter(
@@ -706,18 +699,6 @@ function pruneDeviceReceptions() {
   });
 }
 
-// returns the most frequently observed data rate value within the selected scope
-function topDatr(counts) {
-  let best = null;
-  let bestCount = 0;
-  for (const [key, value] of Object.entries(counts || {})) {
-    if (value > bestCount) {
-      best = key;
-      bestCount = value;
-    }
-  }
-  return best || "-";
-}
 
 function createSensorPosition(gateway, message) {
   const jitter = () => (Math.random() - 0.5) * 0.00042;
@@ -738,7 +719,6 @@ function createSensorPosition(gateway, message) {
       "unknown sensor",
     rssi: message.rssi,
     snr: message.lsnr,
-    datr: message.datr || null,
     gateway: gateway.name,
     gatewayAddress: message.gateway,
     altitude: sensorAltitude(message, gateway, known),
@@ -826,7 +806,6 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
     bestGateway:
       GATEWAYS[sensor.bestGateway]?.name || sensor.bestGateway || "n/a",
     bestRssi: sensor.bestRssi ?? "n/a",
-    datr: sensor.datr || "n/a",
   };
 
   point.popupTemplate = {
@@ -845,7 +824,6 @@ function updateSensorGraphic(key, sensor, Graphic, Point, Polyline, layer) {
       "Best gateway: {bestGateway}<br>" +
       "Best RSSI: {bestRssi} dBm<br>" +
       "Gateways: {gatewayList}<br>" +
-      "Data rate: {datr}<br>" +
       "Last: {lastSeen}",
   };
 
@@ -1107,7 +1085,6 @@ function getScopeStats(scope) {
     let snrCount = 0;
     let lastTime = null;
     const devices = new Set();
-    const datrCounts = {};
 
     Object.values(stats.perGateway).forEach((bucket) => {
       packets += bucket.packets;
@@ -1118,9 +1095,6 @@ function getScopeStats(scope) {
 
       bucket.devices.forEach((device) => devices.add(device));
 
-      Object.entries(bucket.datrCounts || {}).forEach(([key, value]) => {
-        datrCounts[key] = (datrCounts[key] || 0) + value;
-      });
 
       if (!lastTime || (bucket.lastTime && bucket.lastTime > lastTime)) {
         lastTime = bucket.lastTime;
@@ -1132,7 +1106,6 @@ function getScopeStats(scope) {
       rssiCount,
       snrSum,
       snrCount,
-      datrCounts,
       devices,
       lastTime,
     };
@@ -1150,7 +1123,6 @@ function getScopeStats(scope) {
     let snrCount = 0;
     let lastTime = null;
     const devices = new Set();
-    const datrCounts = {};
 
     ravKeys.forEach((key) => {
       const bucket = stats.perGateway[key];
@@ -1164,9 +1136,7 @@ function getScopeStats(scope) {
 
       bucket.devices.forEach((device) => devices.add(device));
 
-      Object.entries(bucket.datrCounts || {}).forEach(([key, value]) => {
-        datrCounts[key] = (datrCounts[key] || 0) + value;
-      });
+
 
       if (!lastTime || (bucket.lastTime && bucket.lastTime > lastTime)) {
         lastTime = bucket.lastTime;
@@ -1178,7 +1148,6 @@ function getScopeStats(scope) {
       rssiCount,
       snrSum,
       snrCount,
-      datrCounts,
       devices,
       lastTime,
     };
@@ -1192,7 +1161,6 @@ function getScopeStats(scope) {
       rssiCount: 0,
       snrSum: 0,
       snrCount: 0,
-      datrCounts: {},
       devices: new Set(),
       lastTime: null,
     };
@@ -1224,7 +1192,6 @@ function updateStats() {
   setText("source-mode", stats.source === "Connecting" ? "link" : "feed");
   setText("scope-name", scopeLabel(selectedScope));
   setText("session-started", new Date(sessionStartedAt).toLocaleTimeString());
-  setText("best-datr", topDatr(scopeStats.datrCounts));
 }
 
 function setText(id, value) {
