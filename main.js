@@ -332,6 +332,7 @@ window.require(
         const key = button.dataset.gateway;
         selectedScope = key;
         zoomToGateway(key);
+
         updateStats();
 
         container.querySelectorAll("button").forEach((item) => {
