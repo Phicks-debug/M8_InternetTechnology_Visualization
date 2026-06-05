@@ -6,7 +6,7 @@ const SENSOR_TIMEOUT = 60000;
 const FLOW_ARCH_HEIGHT = 20;
 const MARKER_DISPLAY_OFFSET = 50;
 const PACKET_AVERAGE_BYTES = 15;
-const WS_URL = "ws://192.87.172.82:1337";
+const WS_URL = "wss://university.phickstran.com/ws";
 const BUILDINGS_ITEM_ID = "c444b24b184c4523a5dc96248bfea4e1";
 const sessionStartedAt = Date.now();
 // stores sensor locations loaded from the CSV file for known device matching
@@ -456,18 +456,14 @@ function connectWS(context) {
   let ws;
   try {
     ws = new WebSocket(WS_URL);
-  } catch {
-    startDemoTraffic(context);
+  } catch (error) {
+    console.error("Could not open WebSocket:", error);
+    setSource("Offline");
+    window.setTimeout(() => connectWS(context), 6000);
     return;
   }
 
-  const fallback = window.setTimeout(() => {
-    if (ws.readyState !== WebSocket.OPEN) startDemoTraffic(context);
-  }, 2500);
-
   ws.onopen = () => {
-    window.clearTimeout(fallback);
-    stopDemoTraffic();
     setSource("Live");
   };
 
@@ -480,44 +476,13 @@ function connectWS(context) {
   };
 
   ws.onclose = () => {
-    setSource("Demo");
-    startDemoTraffic(context);
-    setTimeout(() => connectWS(context), 6000);
+    setSource("Offline");
+    window.setTimeout(() => connectWS(context), 6000);
   };
 
   ws.onerror = () => {
-    setSource("Demo");
-    startDemoTraffic(context);
+    setSource("Offline");
   };
-}
-
-let demoTimer = null;
-
-function startDemoTraffic(context) {
-  if (demoTimer) return;
-  setSource("Demo");
-
-  demoTimer = window.setInterval(() => {
-    const [gateway] = randomEntry(GATEWAYS);
-    const deviceNumber = Math.floor(1 + Math.random() * 16);
-    handleMessage(
-      {
-        gateway,
-        device_name: `sensor-${String(deviceNumber).padStart(2, "0")}`,
-        device_eui: `demo-${deviceNumber}`,
-        rssi: -68 - Math.floor(Math.random() * 48),
-        lsnr: Number((Math.random() * 9 - 2).toFixed(1)),
-        size: demoPacketSize(),
-      },
-      context,
-    );
-  }, 1200);
-}
-
-function stopDemoTraffic() {
-  if (!demoTimer) return;
-  window.clearInterval(demoTimer);
-  demoTimer = null;
 }
 
 // main packet handler:
@@ -1230,15 +1195,6 @@ function updateStats() {
 function setText(id, value) {
   const element = document.getElementById(id);
   if (element) element.textContent = value;
-}
-
-function randomEntry(value) {
-  const entries = Object.entries(value);
-  return entries[Math.floor(Math.random() * entries.length)];
-}
-
-function demoPacketSize() {
-  return Math.round(7 + Math.random() * 12 + Math.random() * 12);
 }
 
 function packetStyle(bytes) {
